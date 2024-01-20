@@ -31,24 +31,21 @@ void Ring_Allreduce(void *sendbuf, void *recvbuf, int n, const MPI_Comm &comm,
   MPI_Request request[2];
 
   for (int i = 0; i < comm_sz - 1; i++) {
-    /* rank 0
-     *            recv
-     *        <------------
-     *       0      1      2
-     *         send
-     *         --->
+    /**    SUM
      *
-     * rank 1
-     *       0      1      2
-     *         recv  send
-     *         --->  --->
+     *     Initial state          11                         22
+     *          [11 12  13]     ----->     [21  22  23]    ----->    [31  32 33]
+     *                      <---------------------------------------
+     *                                        33
      *
-     * rank 2
-     *            send
-     *        <------------
-     *       0      1      2
-     *                recv
-     *                --->
+     *     i = 0                13+33                       11+21
+     *        [11 12  13+33]   ----->   [11+21  22  23]    ----->  [31  22+32 33]
+     *                      <-------------------------------------
+     *                                       22+32
+     *
+     *     i = 1
+     *     [11 12+22+32  13+33]      [11+21  22  13+23+33]      [11+21+31  22+32 33]
+     *
      **/
     int offset_send = (mpi_rank - i + comm_sz) % comm_sz * block_size;
     int offset_recv = (mpi_rank - i - 1 + comm_sz) % comm_sz * block_size;
@@ -64,6 +61,22 @@ void Ring_Allreduce(void *sendbuf, void *recvbuf, int n, const MPI_Comm &comm,
     MPI_Wait(&request[0], nullptr);
   }
 
+  /**   REPLACE
+   *
+   *     Initial state            12+22+32                                13+23+33
+   *     [11 12+22+32  13+33]     ------->      [11+21  22  13+23+33]     ------->    [11+21+31  22+32  33]
+   *                         <--------------------------------------------------------
+   *                                                  11+21+31
+   *
+   *     i = 0                       11+21+31                              12+22+32
+   *     [11+21+31 12+22+32 13+33]  ------->  [11+21  12+22+32  13+23+33]  -------> [11+21+31  22+32  13+23+33]
+   *                              <-----------------------------------------------
+   *                                                  13+23+33
+   *
+   *     i = 1
+   *     [11+21+31 12+22+32  13+23+33]       [11+21+31  12+22+32  13+23+33]      [11+21+31  12+22+32  12+23+33]
+   *
+   **/
   for (int i = 0; i < comm_sz - 1; i++) {
     int offset_send = (mpi_rank - i + 1 + comm_sz) % comm_sz * block_size;
     int offset_recv = (mpi_rank - i + comm_sz) % comm_sz * block_size;
@@ -127,6 +140,5 @@ int main(int argc, char *argv[]) {
 
   mpi_finalize();
 
-  // Print(cur_rank_data);
   return 0;
 }
